@@ -55,7 +55,7 @@
     "verification_tier": {
       "type": "string",
       "description": "Level of operator identity verification performed by the registrar. Presentation-layer field.",
-      "enum": ["email", "domain", "kyb_individual", "kyb_business"]
+      "enum": ["email", "domain", "kyc", "kyb"]
     },
     "domain": {
       "type": "string",

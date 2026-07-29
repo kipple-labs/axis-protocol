@@ -39,7 +39,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 **Operator** — A human or organization controlling one or more agents. The operator is the root of every delegation chain.
 
-**Verification tier** — A property of the Operator Identity Record indicating how thoroughly the registrar verified the operator's identity. One of `email`, `domain`, `kyb_individual`, `kyb_business`. The tier is NOT a field in delegation credentials; it is observable by resolving the operator record.
+**Verification tier** — A property of the Operator Identity Record indicating how thoroughly the registrar verified the operator's identity. One of `email`, `domain`, `kyc`, `kyb`, totally ordered from weakest to strongest. `kyc` verifies a natural person; `kyb` verifies a registered legal entity (companies, nonprofits, universities, and government bodies alike — entity category is not a tier). The tier is NOT a field in delegation credentials; it is observable by resolving the operator record.
 
 **Registry** — Backend infrastructure that stores identity records and credential chains. Defined by its API contract, not by any specific implementation.
 
@@ -143,7 +143,7 @@ Optional fields enable presentation-layer functionality (display name, purpose, 
 **Optional fields** (presentation layer; see §5):
 
 - `display_name` (string)
-- `verification_tier` (string) — one of `"email"`, `"domain"`, `"kyb_individual"`, `"kyb_business"`
+- `verification_tier` (string) — one of `"email"`, `"domain"`, `"kyc"`, `"kyb"`
 - `domain` (string) — verified domain (when `verification_tier` is `"domain"` or higher)
 - `registered_at` (string, ISO 8601)
 
