@@ -5,7 +5,7 @@
 **Author:** Josh Ashcroft
 **License:** Apache 2.0
 **Repository:** https://github.com/MachinesOfDesire/axis-protocol
-**Last updated:** 2026-07-08
+**Last updated:** 2026-07-30
 
 ## Abstract
 
@@ -352,6 +352,8 @@ Classification (matching the reference registry's `classifyScope`, in order): (1
 
 This is adoption pull, not enforcement at the protocol layer: an agent holding `content:comment` works at every platform that speaks the standard, while a platform that invents `x-acme:commenting:add` only interoperates with agents that learned that string. The standard set is a versioned seed (Appendix B), grown by proposal, W3C-vocabulary-first (ActivityStreams 2.0, schema.org Actions, ODRL).
 
+**Implementation-internal action names (normative note).** Gateways and brokers commonly key their internal policy on `<server>:<action>` pairs (e.g. `github:create_issue`, `drive:read`). Such names are grammar-valid but are NOT valid standard-vocabulary scopes: the first segment is not a reserved standard domain, and the string carries no `x-<vendor>:` prefix, so it classifies as `invalid` under the rules above. Implementations MAY use internal names freely inside their own policy stores, but when such a grant is expressed in a wire credential — a DC `scope` entry, an advertised `required_scopes` string, or any other protocol-visible scope — it MUST be carried either as a vendor-prefixed custom scope (example: `x-owyhee:drive:read`) or mapped to a recognized standard scope. Issuers minting credentials from internal policy SHOULD apply this mapping at mint time; retrofitting scope strings on already-issued credentials is the migration this rule exists to prevent.
+
 **Enforcement status.** The reference registry ships the two-layer classifier and publishes the vocabulary at `/.well-known/axis-scopes`, but its delegation **write** path currently validates the v0.2 grammar only — a grammar-valid unprefixed non-standard scope (e.g. `article:draft`) is still accepted on `POST /delegations` today. Vocabulary-layer classification is therefore enforced at *verify/authorize* time by platforms (which check for the specific standard strings they require, e.g. `content:comment`), not yet at credential-mint time. Wiring the classifier into the registry write path is tracked for a subsequent release; issuers SHOULD already restrict themselves to standard or `x-<vendor>:` scopes so their credentials survive that tightening.
 
 #### 4.4.2 Ephemeral sub-agent delegates (v0.3)
@@ -405,7 +407,26 @@ Example:
 
 **The root-operator invariant (MUST).** The `root_operator` field MUST be byte-for-byte identical across every credential in a chain. Verifiers MUST reject any chain where intermediate credentials assert a different `root_operator`. This prevents chain-rerooting attacks.
 
-**Sub-delegation depth (SHOULD).** Delegators SHOULD include `max_sub_delegation_depth` in `constraints`. When present, the delegate MAY further delegate only if the new credential's depth is `max_sub_delegation_depth - 1` or higher. A value of `0` forbids sub-delegation.
+**Sub-delegation depth (SHOULD).** Delegators SHOULD include `max_sub_delegation_depth` in `constraints`. The value is a budget of further delegation links permitted **below the credential that carries it**: a credential carrying `max_sub_delegation_depth: N` permits at most `N` additional credentials beneath it in the chain. A value of `0` means the holder of this credential MUST NOT sub-delegate at all; a value of `1` means the holder MAY issue child credentials, but the holders of those children MUST NOT delegate further.
+
+**Decrement rule (normative).** When the holder of a credential carrying `max_sub_delegation_depth: N` issues a child credential:
+
+- Issuance is permitted only if `N >= 1`.
+- The child SHOULD carry `max_sub_delegation_depth` explicitly, and when it does, its value MUST be at most `N - 1`.
+- When the child omits the constraint, its effective depth budget is `N - 1` — the budget is inherited-and-decremented, never silently discarded.
+
+Verifiers walking a chain (§8 Step 3) MUST reject any chain in which the number of credentials below a credential carrying `max_sub_delegation_depth: N` exceeds `N`, and MUST reject any child credential that declares a depth value greater than its parent's effective budget minus one.
+
+**Worked example (depth ≥ 1, two-hop chain).** A client organization lends a capability to a contractor team, whose operator re-delegates internally to a team member's agent:
+
+| Link | Credential | `scope` | `max_sub_delegation_depth` | Budget below this link |
+|---|---|---|---|---|
+| 1 | `DC1`: `axis:client-org:operator` → `axis:contractor-team:operator` | `["data:read", "data:write"]` | `1` | 1 more link permitted |
+| 2 | `DC2`: `axis:contractor-team:operator` → `axis:contractor-team:analyst` | `["data:read"]` | `0` | no further links |
+
+`DC2` is valid: it sits one link below `DC1`, within `DC1`'s budget of 1; its declared depth (`0`) equals `DC1`'s budget minus one; and its scope `["data:read"]` is a subset of `DC1`'s scope per the attenuation rule — the effective scope at the leaf is the root-to-leaf intersection, `["data:read"]`. Any `DC3` issued by `axis:contractor-team:analyst` MUST be rejected: `DC2` carries depth `0`, and a third link would also exceed `DC1`'s budget of 1. Note the depth budget and the scope attenuate independently and in the same direction — each hop can only narrow what the next holder may do and how far it may re-delegate.
+
+**Interaction with the chain-depth cap.** `max_sub_delegation_depth` bounds delegation *per issuer's intent*; independently of any declared value, chain resolution enforces a hard cap of 16 links per chain (§6.9.1). A declared depth budget cannot extend a chain past that cap: the effective limit at any link is the smaller of the remaining declared budget and the remaining room under the 16-link cap. Chains whose every credential omits the constraint are bounded by the cap alone.
 
 **Cross-system delegation.** The `issued_to` field MAY reference a foreign identifier, e.g. `did:key:z6Mk...` or `did:web:example.com`. Verifiers resolving foreign delegates follow the DID method's resolution procedure to retrieve the delegate's public key.
 
@@ -868,7 +889,7 @@ Response:
 - `allow_unverified` — boolean. If `true`, requests without an AIT are accepted (the platform chooses whether to treat them as verified or as anonymous traffic). If `false`, requests without an AIT are rejected.
 - `registration_url` — where to direct unregistered agents or operators who don't meet the minimum tier
 - `blocked_operators`, `approved_operators`, `rate_limits` (v0.3, OPTIONAL) — operator allow/block lists and rate-limit hints, enforced platform-side. Published for schema completeness; a platform that does not operator-gate leaves the lists empty/absent.
-- `actions` (OPTIONAL, shipped in the reference commenting platform) — an array describing how to *invoke* this platform, not just what it requires: per-action `id`, `description`, `method`, `path`, `auth` (e.g. `{ "header": "X-AXIS-Token", "scheme": "AIT" }`), `required_scopes`, a minimal `request` field schema, and expected `responses`. Strictly additive and advisory — consumers that predate the field ignore it, and its absence remains valid. Deliberately minimal; not a full OpenAPI document.
+- `actions` (OPTIONAL, v0.3.x) — the per-action access manifest: an array describing how to *invoke* this platform action by action, and what each action requires. Full shape and precedence rules in §7.2. Strictly additive — consumers that predate the field ignore it, and its absence remains valid.
 - `platform_id` (OPTIONAL) — a human-oriented platform label. `audience` is the normative identifier; shipped platform implementations omit `platform_id` and remain conformant.
 
 **Reference-registry note.** The reference registry, acting as a platform for its own endpoints, advertises `axis_version: "0.2"` on this document and a permissive policy (`minimum_verification_level: "email"`, `allow_unverified: true`, empty `required_scopes`). It does not yet emit `proof_of_possession`; the v0.3 PoP fields above are the spec design for platforms that adopt sender-constrained AITs.
@@ -902,6 +923,8 @@ Both carry the same body, scoped to the refused action:
   "action": "content:publish",
   "required": { "minimum_verification_level": "domain", "required_scopes": ["content:publish"], "allow_unverified": false },
   "current": { "verification_level": "email", "held_scopes": ["content:comment"] },
+  "required_tier": "domain",
+  "verify_url": "https://signup.axisprime.ai/signup",
   "remedy": {
     "what": "Upgrade this operator to domain verification.",
     "how": "Add the AXIS DNS TXT record shown at the link, then retry.",
@@ -916,18 +939,70 @@ Both carry the same body, scoped to the refused action:
 - `message` — human-readable and specific.
 - `action` — the scope the refused action maps to.
 - `missing_scopes` (OPTIONAL array) — on `insufficient_scope` denials, the exact scope strings the request required but the presented chain did not cover. Shipped platform verifiers emit this alongside `axis_error`; it is the minimal machine-actionable form of the `required`/`current` gap.
+- `required_tier` (OPTIONAL, v0.3.x) — on tier-based denials (`axis_error: "insufficient_verification"`), the minimum operator verification tier the refused action requires: one of `email`, `domain`, `kyc`, `kyb` (§4.2). Present when the denial is tier-based. Because per-action `min_tier` overrides (§7.2) can make an action's requirement stricter than the site-level `minimum_verification_level`, the requirement is request-specific — this field states it for the refused action so the refused party learns the target tier with zero inference. `required_tier` is to tier denials what `missing_scopes` is to scope denials: the minimal machine-actionable form of the gap.
+- `verify_url` (OPTIONAL, v0.3.x) — the operator-facing URL where the required verification can be obtained, sourced from the platform's advertised `registration_url` (§7). Present when the platform publishes a `registration_url` and the denial is remediable by verification. The refusing response SHOULD carry this actionable link directly rather than requiring the refused party to fetch and interpret `/.well-known/axis-access`.
 - `required` vs `current` — the gap, as data.
 - `remedy` — `what`/`how` in plain language; `url` deep-links to the exact upgrade/registration flow carrying the operator id, target tier/scope, and a `return` URL so the operator lands back at the original action. The `remedy.url` SHOULD derive from the platform's `registration_url` (§7) plus gap-describing params, so platforms already publishing `registration_url` get most of this for free.
 - `audience` — echoes the platform's `aud` (§4.3) so a retrying agent mints the AIT with the right `aud` without a separate fetch.
 - `challenge` — OPTIONAL opaque nonce. If present, a retrying agent SHOULD echo it in the presented AIT, binding the presentation to this request (per-request replay protection atop `aud`). This is the seam to sender-constrained AITs (§4.3.1): when DPoP/`cnf` are in play, `challenge` becomes the nonce carrier (the DPoP server-nonce mode).
 
+**Additive status of `required_tier` / `verify_url`.** Both fields are v0.3.x additive and non-breaking: verifiers and agents that predate them ignore unknown body fields, and their absence remains valid. They exist because per-action tier requirements (§7.2 `min_tier`) make "which tier do I need?" request-specific — the funnel from a deny to a completed verification depends on the refusing response itself carrying the target tier and an actionable link, with zero inference required of the refused party.
+
 **Graceful degradation.** The inline challenge is strictly an OPTIMIZATION over the pull model, never a replacement, and neither side is REQUIRED to implement it. An agent that only reads `/.well-known/axis-access` still works everywhere (it just misses the inline remedy); a platform that returns a bare 401/403 still works with every agent (it just costs the extra fetch). Cannot break anything built against v0.2.
 
 **Agent behavior.** Agents SHOULD surface `message` + `remedy` to their operator and MAY auto-follow `remedy.url` only for human-gated authority-creating steps — an agent may present authority, never grant itself authority.
 
-**Status — partially shipped (platform-side).** Production platform-side verifiers now implement this section's deny taxonomy: every `401` carries the parameterized `WWW-Authenticate: AXIS` challenge with a structured body, and `axis_error` is emitted wherever the enum above names the condition — `no_credential`, `expired`, `agent_revoked`, `operator_revoked`, `insufficient_scope` (with `missing_scopes` named), and `insufficient_verification`. Shipped bodies also carry a granular platform `code` alongside `axis_error` (e.g. `agent_suspended` with `axis_error: "agent_revoked"`), so the enum is the stable machine surface and the code preserves diagnostic detail. The richer `required`/`current`/`remedy` blocks and the `challenge` nonce are specified but not yet shipped anywhere. The reference registry itself (acting as a platform for its own endpoints) does not emit the inline-challenge body.
+**Status — partially shipped (platform-side).** Production platform-side verifiers now implement this section's deny taxonomy: every `401` carries the parameterized `WWW-Authenticate: AXIS` challenge with a structured body, and `axis_error` is emitted wherever the enum above names the condition — `no_credential`, `expired`, `agent_revoked`, `operator_revoked`, `insufficient_scope` (with `missing_scopes` named), and `insufficient_verification`. Shipped bodies also carry a granular platform `code` alongside `axis_error` (e.g. `agent_suspended` with `axis_error: "agent_revoked"`), so the enum is the stable machine surface and the code preserves diagnostic detail. The richer `required`/`current`/`remedy` blocks, the `challenge` nonce, and the v0.3.x `required_tier`/`verify_url` fields are specified but not yet shipped anywhere. The reference registry itself (acting as a platform for its own endpoints) does not emit the inline-challenge body.
 
 **Layering note (shipped behavior).** Platform verifiers in production keep deny layers explicitly distinguishable in the body (a `layer` field in shipped implementations): a *protocol-layer scope denial* (`axis_error: "insufficient_scope"` — the credential chain does not cover the required scope), a *protocol-layer verification denial* (`axis_error: "insufficient_verification"` — the operator tier is below the platform's advertised `minimum_verification_level`), and a *platform-policy denial* (the platform's own admission rules — operator blocklists, closed or unconfigured gates, resource-level policy — rejected an otherwise-valid, in-scope credential). Policy denials use platform-defined codes (`operator_blocked`, `gate_closed`, etc.) and carry no `axis_error`; `axis_error` values are reserved for the protocol-layer conditions enumerated above. Platforms SHOULD keep the layers distinguishable in their deny bodies so agents can tell "get a better credential" from "this platform said no."
+
+### 7.2 Per-action access manifest — `actions[]` (v0.3.x)
+
+The flat fields of `/.well-known/axis-access` (§7) describe a platform's requirements site-wide: one `minimum_verification_level`, one `required_scopes` list. Real platforms gate different actions differently — commenting may need only an email-verified operator while publishing needs domain verification. The `actions[]` array carries that per-action structure. It was first shipped by the reference commenting platform as an advisory field; this section promotes it to the documented shape of the discovery document.
+
+Example (within the §7 response document):
+
+```json
+"actions": [
+  {
+    "id": "content:comment",
+    "description": "Post a comment on a public post",
+    "method": "POST",
+    "path": "/axis/comments",
+    "auth": { "header": "X-AXIS-Token", "scheme": "AIT" },
+    "required_scopes": ["content:comment"],
+    "min_tier": "email",
+    "request": { "post_id": "string", "body": "string" },
+    "responses": { "201": "created", "401": "no or invalid AIT (§7.1 body)", "403": "insufficient tier or scope (§7.1 body)", "409": "ait_replay" }
+  },
+  {
+    "id": "content:publish",
+    "description": "Publish an article",
+    "method": "POST",
+    "path": "/axis/articles",
+    "auth": { "header": "X-AXIS-Token", "scheme": "AIT" },
+    "required_scopes": ["content:publish"],
+    "min_tier": "domain"
+  }
+]
+```
+
+**Per-entry fields:**
+
+- `id` (REQUIRED) — stable identifier for the action. SHOULD be the scope string the action maps to when one exists (it is what a §7.1 refusal body's `action` field names).
+- `required_scopes` (REQUIRED) — the scope strings the presented credential chain must cover for this action. Entries MUST be recognized standard scopes or `x-<vendor>:` custom scopes (§4.4.1).
+- `min_tier` (OPTIONAL) — the minimum operator verification tier for this action: one of `email`, `domain`, `kyc`, `kyb` (§4.2). When present, it supersedes the site-level `minimum_verification_level` for this action; when absent, the site level applies.
+- `auth` (OPTIONAL) — the credential-presentation expectation, e.g. `{ "header": "X-AXIS-Token", "scheme": "AIT" }`. When absent, the platform's default presentation channels (§4.3) apply.
+- `method`, `path` (OPTIONAL) — how to invoke the action. Advisory.
+- `description` (OPTIONAL) — human-oriented.
+- `request` (OPTIONAL) — a minimal field schema for the request body. Advisory; deliberately not a full OpenAPI document.
+- `responses` (OPTIONAL) — documented response codes, keyed by status. Advisory; refusal codes SHOULD follow the §7.1 taxonomy.
+
+**Precedence and back-compat.** The site-level flat fields remain valid and carry their existing requirement levels; a document without `actions[]` is conformant unchanged, and consumers that predate the field ignore it. When `actions[]` is present, its per-action entries supersede the site-level `required_scopes` and `minimum_verification_level` for the actions they list; the site-level fields remain the defaults for any action not listed. The field is v0.3.x additive and advisory in the same sense as the rest of the discovery document: it communicates policy — enforcement remains the platform's own gate (§7 design rationale).
+
+**Generation (RECOMMENDED).** Platforms SHOULD generate the published `actions[]` document from the same policy configuration their gate actually enforces, rather than hand-maintaining the two. A hand-written well-known document and an enforced gate policy are two separately-maintained literals with nothing keeping them in sync; they will drift, and drift here has a specific failure mode in each direction — the document advertises requirements the gate does not enforce (over-promising, an audit finding), or the gate enforces requirements the document does not advertise (denials the §7.1 funnel cannot explain). Deriving the document from the enforced policy makes the advertisement true by construction.
+
+**Relationship to §7.1.** The per-action `min_tier` is what makes a tier denial request-specific, and therefore what makes the §7.1 `required_tier` field necessary: a refused agent cannot infer its target tier from the site-level `minimum_verification_level` alone once actions override it.
 
 ## 8. Verification procedure
 
@@ -974,7 +1049,7 @@ If the request requires authority beyond the agent's identity (i.e. a DC is pres
    - Confirm `root_operator` is byte-for-byte identical across all credentials.
    - Confirm each DC's `scope` is a subset of its parent's `scope`.
    - Confirm `created <= now < expires` for each DC.
-   - If `max_sub_delegation_depth` is specified in any constraint, confirm it is respected downward.
+   - If `max_sub_delegation_depth` is specified in any credential's `constraints`, confirm the depth budget is respected per the §4.4 decrement rule: the number of credentials below that credential does not exceed its declared value, and no child declares a depth greater than its parent's effective budget minus one.
    - Check each DC's revocation status at its `revocation_url`.
    - **(v0.3) Ephemeral-delegate branch.** If a DC's `issued_to` matches the ephemeral pattern (`axis:{operator}:{agent}:sub:{task-id}`, §4.4.2):
      - Confirm `issued_to_public_key` is present (reject if absent).
