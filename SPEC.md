@@ -11,7 +11,7 @@
 
 AXIS (Agent Cross-system Identity Standard) is a protocol for autonomous AI agent identity, delegation, and authorization across operator boundaries. This document specifies the protocol's data model, API contract, verification procedures, and conformance criteria. v0.3 is additive over v0.2: it introduces sender-constrained AITs (proof-of-possession via `cnf.jkt` + DPoP), ephemeral within-runtime sub-agent delegates, a standard scope vocabulary layered over the v0.2 grammar, a CA-trust registry-legitimacy model (`/.well-known/axis-registry` + `/.well-known/axis-directory`), the `/.well-known/axis-scopes` discovery manifest, an optional inline challenge-on-refusal response, and the formal `did:axis` method. Every v0.3 mechanism degrades gracefully against v0.2 verifiers; the one place a v0.3 verifier MUST reject a v0.2 presentation is when the platform advertises `proof_of_possession: "required"` (see §4.3). v0.2 itself was additive over v0.1.1 with one behavioral change: the `aud` claim on AITs became REQUIRED (see §4.3).
 
-AXIS addresses the agent accountability problem: when an autonomous AI agent takes a consequential action, third parties — receiving platforms, auditors, courts, regulators — must be able to verify who authorized that action, what scope they authorized, and whether that authority is still in force. Today's identity tooling does not produce the evidence regulatory frameworks and live incidents demand. AXIS provides that evidence as a first-class protocol artifact: a cryptographically signed, self-contained credential chain that any third party can verify locally, without prior relationship to the agent's operator.
+AXIS addresses the agent accountability problem: when an autonomous AI agent takes a consequential action, third parties — receiving platforms, auditors, courts, regulators — must be able to verify who authorized that action, what scope they authorized, and whether that authority is still in force. Today's identity tooling does not produce the evidence regulatory frameworks and live incidents demand. AXIS provides that evidence as a first-class protocol artifact: a cryptographically signed, self-contained credential chain that any third party can verify locally, without a prior technical relationship to the agent's operator.
 
 The defining features are a lean credential surface (identity token plus optional delegation chain), a self-locating registry model where credentials carry the pointer to the registry that issued them, and monotonic delegation attenuation with a root-operator invariant. Credential chain validation is performed locally by the verifier; the only network dependencies are standard lookups against the agent's self-declared registry (public key retrieval and revocation checks), and that registry may be any AXIS-compliant implementation.
 
@@ -488,7 +488,7 @@ The design intent is to favor **measurable behavioral signals** (analogous to cr
 }
 ```
 
-A CPA binds content, production agent, delegation credential, review agent, and approval timestamp into a single signed artifact. Third parties verifying content governance can validate a CPA without any prior relationship to the operator or the content pipeline.
+A CPA binds content, production agent, delegation credential, review agent, and approval timestamp into a single signed artifact. Third parties verifying content governance can validate a CPA without any prior technical relationship to the operator or the content pipeline.
 
 ## 5. Registry Data Visibility Model
 
@@ -1083,7 +1083,9 @@ Platforms SHOULD retain the full credential chain at time of action. The chain i
 
 ## 9. Worked example: cross-operator agent hire
 
-Scenario: Operator A hires an external specialist (Agent B) from a different AXIS registry, who produces work reviewed by Operator A's internal editor (Agent C), which is then published to a third-party platform (Ghost CMS) with no prior relationship to any party.
+Scenario: Operator A hires an external specialist (Agent B) from a different AXIS registry, who produces work reviewed by Operator A's internal editor (Agent C), which is then published to a third-party platform (Ghost CMS) with no prior technical relationship to any party.
+
+This example deliberately takes the hardest case — parties that have never been introduced to each other's systems. It is not the required case: two parties that already know each other commercially use exactly the same machinery, and skip nothing.
 
 **Actors:**
 
@@ -1135,7 +1137,7 @@ Agent C accepts the draft, produces a Content Provenance Attestation signed by A
 
 ### Step 5 — Ghost verifies
 
-Ghost has no prior relationship to any party. Following §8:
+Ghost has no prior technical relationship to any party — no shared identity provider, no federation, no pre-provisioned credential. Following §8:
 
 1. Resolves `axis:widget-corp:editor` from `registry.axisprime.ai`. Verifies Agent C's AIT signature.
 2. Checks Agent C's revocation.

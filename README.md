@@ -9,7 +9,7 @@
 
 ## What is AXIS?
 
-AXIS is an open protocol for autonomous AI agent identity, delegation, and authorization. It defines how agents prove who they are, who authorized them to act, and what they are allowed to do — in a way that any third party can verify without any prior relationship with the agent or its operator. Verification is cryptographic and self-locating: the agent carries a pointer to its registry, and any verifier can resolve, verify, and make a trust decision with no pre-shared infrastructure. Multiple independent registries can coexist and interoperate.
+AXIS is an open protocol for autonomous AI agent identity, delegation, and authorization. It defines how agents prove who they are, who authorized them to act, and what they are allowed to do — in a way that any third party can verify without any prior technical relationship with the agent or its operator. Verification is cryptographic and self-locating: the agent carries a pointer to its registry, and any verifier can resolve, verify, and make a trust decision with no pre-shared infrastructure. Multiple independent registries can coexist and interoperate.
 
 AXIS is designed for the cross-system case: an agent built and operated by one organization needs to be verified by a platform or service operated by a completely different organization, possibly using a different agent runtime, different identity infrastructure, and with no pre-existing relationship between any of the parties.
 
@@ -67,7 +67,7 @@ The **Agent Identity Record** and **AXIS Identity Token (AIT)**. Persistent, cry
 
 **Content Provenance Attestation (CPA)** — A signed record proving specific content was produced by a specific agent under a specific delegation, reviewed by a specific party. Enables third-party verification of content governance chains.
 
-**Verifier (Relying Party)** — Any party that receives a request from an agent and needs to verify the agent's identity and authorization. The verifier has no prior relationship with the agent or its operator.
+**Verifier (Relying Party)** — Any party that receives a request from an agent and needs to verify the agent's identity and authorization. The verifier needs no prior *technical* relationship with the agent or its operator — no shared identity provider, no federation, no pre-provisioned credential. It may of course have a commercial or contractual one.
 
 ## Quick start
 
