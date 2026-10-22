@@ -143,7 +143,7 @@ The AXIS Protocol specification is owned by Kipple Labs, Inc. and published unde
 AXIS Prime implements the AXIS v0.2 credential surface plus the v0.3 discovery documents (`/.well-known/axis-registry`, `/.well-known/axis-scopes`, `/.well-known/axis-directory`) as a Cloudflare Workers + D1 application. It is currently in **closed beta**: the registry API, verification endpoint, and interactive demo are publicly readable, but self-service operator registration is gated while the billing surface and operator onboarding are finalized.
 
 - **Registry API (read-only public):** `https://registry.axisprime.ai`
-- **Registry source:** [github.com/MachinesOfDesire/axis-registry](https://github.com/MachinesOfDesire/axis-registry) (Apache 2.0)
+- **Registry source:** [github.com/Kipple-Labs/axis-registry](https://github.com/Kipple-Labs/axis-registry) (Apache 2.0)
 - **Operator signup:** `https://signup.axisprime.ai` (closed beta — contact for access)
 - **Key algorithm:** Ed25519 (Cloudflare Workers crypto)
 - **Storage:** Cloudflare D1 (SQLite at the edge)
